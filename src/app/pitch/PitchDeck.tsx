@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import type { PitchStats } from "@/lib/pitch-stats";
 
 const ACCENT = "#c8e64a";
 const CREAM = "#e8dcc8";
@@ -24,7 +25,7 @@ const SLIDE_LABELS = [
 ];
 
 /* ─────────────── main component ─────────────── */
-export default function PitchDeck() {
+export default function PitchDeck({ stats }: { stats: PitchStats }) {
   const [active, setActive] = useState(0);
   const [dir, setDir] = useState<"next" | "prev">("next");
 
@@ -89,15 +90,15 @@ export default function PitchDeck() {
   }, [next, prev]);
 
   const slides = [
-    <SlideCover key="cover" />,
+    <SlideCover key="cover" stats={stats} />,
     <SlideProblem key="problem" />,
     <SlideSolution key="solution" />,
     <SlideProduct key="product" />,
-    <SlideTraction key="traction" />,
-    <SlideModel key="model" />,
+    <SlideTraction key="traction" stats={stats} />,
+    <SlideModel key="model" stats={stats} />,
     <SlideMarket key="market" />,
     <SlideCompetition key="competition" />,
-    <SlideGTM key="gtm" />,
+    <SlideGTM key="gtm" stats={stats} />,
     <SlideFounder key="founder" />,
     <SlideVision key="vision" />,
     <SlideRoadmap key="roadmap" />,
@@ -211,7 +212,7 @@ export default function PitchDeck() {
 
 /* ─────────────── slides ─────────────── */
 
-function SlideCover() {
+function SlideCover({ stats }: { stats: PitchStats }) {
   return (
     <div className="flex flex-col items-center gap-8 text-center">
       <div className="text-6xl sm:text-8xl lg:text-9xl">
@@ -222,10 +223,10 @@ function SlideCover() {
         Your GitHub profile as a 3D pixel art building in an interactive city
       </p>
       <div className="mt-2 flex flex-wrap items-center justify-center gap-3">
-        <Pill>11,800+ developers</Pill>
-        <Pill>R$1,700+ revenue</Pill>
+        <Pill>{stats.formattedDevelopers} developers</Pill>
+        <Pill>{stats.formattedRevenue} revenue</Pill>
         <Pill>$0 marketing</Pill>
-        <Pill>10 days old</Pill>
+        <Pill>{stats.formattedDaysOld}</Pill>
       </div>
       <p className="mt-4 text-xs text-dim normal-case sm:text-sm">
         Press &rarr; or swipe to navigate
@@ -348,36 +349,36 @@ function SlideProduct() {
   );
 }
 
-function SlideTraction() {
+function SlideTraction({ stats }: { stats: PitchStats }) {
   return (
     <div className="flex w-full max-w-4xl flex-col gap-8">
       <SlideHeader n="05" title="Traction" />
       <p className="text-sm text-dim normal-case sm:text-base">
-        All organic. $0 spent on marketing. 10 days since launch.
+        All organic. $0 spent on marketing. {stats.daysOld} days since launch.
       </p>
       <div className="grid gap-5 sm:grid-cols-3">
-        <MetricCard value="11,828" label="Developers in the city" accent />
-        <MetricCard value="904" label="Claimed accounts (OAuth)" />
+        <MetricCard value={stats.formattedDevelopers} label="Developers in the city" accent />
+        <MetricCard value={stats.formattedClaimed} label="Claimed accounts (OAuth)" />
         <MetricCard value="21,669" label="Unique visitors" />
         <MetricCard value="56,623" label="Pageviews" />
         <MetricCard value="12%" label="Bounce rate" accent />
-        <MetricCard value="9.86%" label="Conversion rate" />
+        <MetricCard value={stats.conversionRate} label="Conversion rate" />
       </div>
       <div className="border-[3px] border-border bg-bg-raised p-5 sm:p-6">
         <p className="mb-4 text-sm text-cream sm:text-base">
-          Revenue (first 10 days)
+          Revenue (first {stats.daysOld} days)
         </p>
         <div className="grid gap-5 sm:grid-cols-3">
-          <MetricCard value="R$1,736" label="Total Stripe revenue" accent />
-          <MetricCard value="34" label="Paid ad campaigns" />
-          <MetricCard value="28" label="Unique ad brands" />
+          <MetricCard value={stats.formattedRevenue} label="Total revenue" accent />
+          <MetricCard value={stats.formattedAdCampaigns} label="Paid ad campaigns" />
+          <MetricCard value={stats.formattedUniqueBrands} label="Unique ad brands" />
         </div>
       </div>
     </div>
   );
 }
 
-function SlideModel() {
+function SlideModel({ stats }: { stats: PitchStats }) {
   return (
     <div className="flex w-full max-w-4xl flex-col gap-8">
       <SlideHeader n="06" title="Business Model" />
@@ -387,14 +388,14 @@ function SlideModel() {
           title="In-Game Ads"
           desc="Self-serve dashboard. Planes, blimps, billboards, rooftop signs, LED wraps. Weekly or monthly."
           price="$9 - $99"
-          revenue="R$1,736"
+          revenue={stats.formattedAdRevenue}
         />
         <ModelCard
           status="live"
           title="Cosmetic Shop"
           desc="Building customization. Crown effects, roof structures, auras. Achievements unlock free items."
           price="$0.75 - $2"
-          revenue="Early sales"
+          revenue={stats.formattedShopRevenue}
         />
         <ModelCard
           status="planned"
@@ -467,7 +468,7 @@ function SlideCompetition() {
   );
 }
 
-function SlideGTM() {
+function SlideGTM({ stats }: { stats: PitchStats }) {
   return (
     <div className="flex w-full max-w-4xl flex-col gap-8">
       <SlideHeader n="09" title="Go-to-Market" />
@@ -498,7 +499,7 @@ function SlideGTM() {
           $0
         </p>
         <p className="mt-3 text-sm text-muted normal-case sm:text-base">
-          Customer acquisition cost. 11,828 developers joined organically.
+          Customer acquisition cost. {stats.formattedDevelopers} developers joined organically.
         </p>
       </div>
     </div>

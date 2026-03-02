@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { getPitchStats } from "@/lib/pitch-stats";
 import PitchDeck from "./PitchDeck";
+
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: "Pitch Deck - Git City",
@@ -8,6 +10,7 @@ export const metadata: Metadata = {
     "Git City: transforming GitHub profiles into an interactive 3D city. 11,800+ developers, organic growth, revenue from day one.",
 };
 
-export default function PitchPage() {
-  return <PitchDeck />;
+export default async function PitchPage() {
+  const stats = await getPitchStats();
+  return <PitchDeck stats={stats} />;
 }

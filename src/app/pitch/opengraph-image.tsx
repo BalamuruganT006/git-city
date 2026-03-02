@@ -1,15 +1,17 @@
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { getPitchStats } from "@/lib/pitch-stats";
 
 export const alt = "Git City - Pitch Deck";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default async function Image() {
-  const fontData = await readFile(
-    join(process.cwd(), "public/fonts/Silkscreen-Regular.ttf")
-  );
+  const [fontData, stats] = await Promise.all([
+    readFile(join(process.cwd(), "public/fonts/Silkscreen-Regular.ttf")),
+    getPitchStats(),
+  ]);
 
   const accent = "#c8e64a";
   const bg = "#0d0d0f";
@@ -73,9 +75,9 @@ export default async function Image() {
             color: dim,
           }}
         >
-          <span>11,800+ devs</span>
+          <span>{stats.formattedDevelopers} devs</span>
           <span style={{ color: border }}>|</span>
-          <span>R$1,700+ revenue</span>
+          <span>{stats.formattedRevenue} revenue</span>
           <span style={{ color: border }}>|</span>
           <span>$0 marketing</span>
         </div>
