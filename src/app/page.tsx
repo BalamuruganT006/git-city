@@ -2185,6 +2185,28 @@ if (claimingGift) return;
                 <span style={{ color: theme.accent }}>ESC</span>
                 <span className="text-muted">Pause &amp; Exit</span>
               </div>
+              <div className="flex items-center justify-between gap-6 mt-1 pt-1 border-t border-white/10">
+                <span className="text-cream">🖐 Gesture</span>
+                <span className="text-muted">Beta — webcam steering</span>
+              </div>
+              <div className="flex flex-col gap-1 text-[9px] text-muted/70 mt-1">
+                <div className="flex items-center justify-between gap-4">
+                  <span>Hand move</span>
+                  <span>Steer &amp; climb</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>3+ fingers</span>
+                  <span>Boost (2×)</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>1 finger</span>
+                  <span>Slow (0.3×)</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>2 fingers</span>
+                  <span>Normal</span>
+                </div>
+              </div>
             </div>
             <button
               onClick={() => {

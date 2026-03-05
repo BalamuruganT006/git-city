@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF, Stats, PerformanceMonitor } from "@react-three/drei";
+import { useGestureControls } from "@/hooks/useGestureControls";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
 import CityScene from "./CityScene";
@@ -552,7 +553,7 @@ const _idealLook = new THREE.Vector3();
 const _blendedPos = new THREE.Vector3();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 
-function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = false, startPaused = false, vehicleType = "airplane", posRef }: { onExit: () => void; onHud: (s: number, a: number, x: number, z: number, yaw: number) => void; onPause: (paused: boolean) => void; pauseSignal?: number; hasOverlay?: boolean; startPaused?: boolean; vehicleType?: string; posRef?: React.MutableRefObject<THREE.Vector3> }) {
+function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = false, startPaused = false, vehicleType = "airplane", posRef, gestureEnabled, onGestureStatus, preferredHand = "right" }: { onExit: () => void; onHud: (s: number, a: number, x: number, z: number, yaw: number) => void; onPause: (paused: boolean) => void; pauseSignal?: number; hasOverlay?: boolean; startPaused?: boolean; vehicleType?: string; posRef?: React.MutableRefObject<THREE.Vector3>; gestureEnabled?: boolean; onGestureStatus?: (status: string) => void; preferredHand?: "left" | "right" }) {
   const { camera } = useThree();
   const ref = useRef<THREE.Group>(null);
   const orbitRef = useRef<any>(null);
@@ -562,6 +563,19 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
   const [isPaused, setIsPaused] = useState(startPaused);
   const paused = useRef(startPaused);
   const isFirstResume = useRef(startPaused); // skip transition on first resume from startPaused
+
+  // ── Gesture controls ───────────────────────────────────────────────────────
+  const { status: gestureStatus } = useGestureControls({
+    mouseRef: mouse,
+    keysRef: keys,
+    enabled: !!gestureEnabled,
+    preferredHand,
+  });
+
+  // Report gesture status to parent
+  useEffect(() => {
+    onGestureStatus?.(gestureStatus);
+  }, [gestureStatus, onGestureStatus]);
 
   // Flight state
   const yaw = useRef(0);
@@ -615,10 +629,13 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
     if (startPaused) onPause(true);
   }, [camera]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Mouse tracking for flight steering
+  // Mouse tracking for flight steering — skipped while gesture mode writes the same refs
+  const gestureActiveRef = useRef(false);
+  gestureActiveRef.current = !!gestureEnabled && gestureStatus === "active";
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      if (!paused.current) {
+      if (!paused.current && !gestureActiveRef.current) {
         mouse.current.x = (e.clientX / window.innerWidth) * 2 - 1;
         mouse.current.y = -((e.clientY / window.innerHeight) * 2 - 1);
       }
@@ -1907,6 +1924,13 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
   const [bloomEnabled, setBloomEnabled] = useState(false);
   const flyPosRef = useRef(new THREE.Vector3());
 
+  // ── Gesture / Mouse control mode ──────────────────────────────────────────
+  const [controlMode, setControlMode] = useState<"mouse" | "gesture">("mouse");
+  const [gestureStatus, setGestureStatus] = useState("idle");
+  const [preferredHand, setPreferredHand] = useState<"left" | "right">(() => {
+    try { return (localStorage.getItem("gitcity_gesture_hand") as "left" | "right") || "right"; } catch { return "right"; }
+  });
+
   const cityRadius = useMemo(() => {
     let max = 200;
     for (const b of buildings) {
@@ -1917,6 +1941,7 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
   }, [buildings]);
 
   return (
+    <>
     <Canvas
       camera={{ position: [400, 450, 600], fov: 55, near: 0.5, far: 4000 }}
       dpr={dpr}
@@ -1967,7 +1992,7 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
 
           {!introMode && flyMode && (
             <>
-              <AirplaneFlight onExit={onExitFly} onHud={onHud ?? (() => {})} onPause={onPause ?? (() => {})} pauseSignal={flyPauseSignal} hasOverlay={flyHasOverlay} startPaused={flyStartPaused} vehicleType={flyVehicle} posRef={flyPosRef} />
+              <AirplaneFlight onExit={onExitFly} onHud={onHud ?? (() => {})} onPause={onPause ?? (() => {})} pauseSignal={flyPauseSignal} hasOverlay={flyHasOverlay} startPaused={flyStartPaused} vehicleType={flyVehicle} posRef={flyPosRef} gestureEnabled={controlMode === "gesture"} onGestureStatus={setGestureStatus} preferredHand={preferredHand} />
               <SkyCollectibles playerPosRef={flyPosRef} accentColor={accentColor ?? "#6090e0"} onCollect={onCollect ?? (() => {})} cityRadius={cityRadius} />
             </>
           )}
@@ -2048,5 +2073,106 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
         </EffectComposer>
       )}
     </Canvas>
+
+    {/* ── Control Mode Chooser (outside Canvas) ── */}
+    {flyMode && (
+      <div
+        style={{
+          position: "fixed",
+          bottom: 16,
+          right: 16,
+          zIndex: 50,
+          display: "flex",
+          gap: 4,
+          borderRadius: 6,
+          border: "2px solid rgba(255,255,255,0.15)",
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(6px)",
+          padding: 3,
+          fontSize: 11,
+        }}
+      >
+        <button
+          onClick={() => { setControlMode("mouse"); }}
+          style={{
+            padding: "5px 10px",
+            borderRadius: 4,
+            border: "none",
+            cursor: "pointer",
+            background: controlMode === "mouse" ? "rgba(255,255,255,0.2)" : "transparent",
+            color: controlMode === "mouse" ? "#fff" : "rgba(255,255,255,0.5)",
+            fontFamily: "inherit",
+            fontSize: 11,
+            transition: "background 0.2s, color 0.2s",
+          }}
+        >
+          🖱 Mouse
+        </button>
+        <button
+          onClick={() => { setControlMode("gesture"); }}
+          style={{
+            padding: "5px 10px",
+            borderRadius: 4,
+            border: "none",
+            cursor: "pointer",
+            background:
+              controlMode === "gesture"
+                ? gestureStatus === "active"
+                  ? "rgba(34,197,94,0.5)"
+                  : gestureStatus === "loading"
+                    ? "rgba(234,179,8,0.5)"
+                    : gestureStatus === "error"
+                      ? "rgba(239,68,68,0.5)"
+                      : "rgba(255,255,255,0.2)"
+                : "transparent",
+            color: controlMode === "gesture" ? "#fff" : "rgba(255,255,255,0.5)",
+            fontFamily: "inherit",
+            fontSize: 11,
+            transition: "background 0.2s, color 0.2s",
+          }}
+          title={
+            gestureStatus === "active"
+              ? "Hand tracking active"
+              : gestureStatus === "loading"
+                ? "Loading hand tracking…"
+                : gestureStatus === "error"
+                  ? "Camera unavailable"
+                  : "Webcam hand steering (Beta)"
+          }
+        >
+          {gestureStatus === "loading"
+            ? "✋ Loading…"
+            : gestureStatus === "active"
+              ? "✋ Gesture"
+              : gestureStatus === "error"
+                ? "✋ Error"
+                : "✋ Gesture"}
+          <span style={{ fontSize: 8, opacity: 0.7, marginLeft: 3, verticalAlign: "super" }}>BETA</span>
+        </button>
+        {/* Hand preference toggle */}
+        <button
+          onClick={() => {
+            const next = preferredHand === "right" ? "left" : "right";
+            setPreferredHand(next);
+            try { localStorage.setItem("gitcity_gesture_hand", next); } catch {}
+          }}
+          style={{
+            padding: "5px 8px",
+            borderRadius: 4,
+            border: "none",
+            cursor: "pointer",
+            background: "transparent",
+            color: "rgba(255,255,255,0.5)",
+            fontFamily: "inherit",
+            fontSize: 10,
+            transition: "color 0.2s",
+          }}
+          title={`Using ${preferredHand} hand — click to switch`}
+        >
+          {preferredHand === "right" ? "R" : "L"}
+        </button>
+      </div>
+    )}
+    </>
   );
 }
