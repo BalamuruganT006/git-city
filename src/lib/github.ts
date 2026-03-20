@@ -1,3 +1,5 @@
+import { SPONSORS } from "./sponsors/registry";
+
 // ─── Types ───────────────────────────────────────────────────
 
 export interface DeveloperRecord {
@@ -41,6 +43,16 @@ export interface DeveloperRecord {
   xp_total?: number;
   xp_level?: number;
   xp_github?: number;
+  // Game fields
+  achievements?: string[];
+  kudos_count?: number;
+  visit_count?: number;
+  loadout?: { crown: string | null; roof: string | null; aura: string | null } | null;
+  app_streak?: number;
+  raid_xp?: number;
+  active_raid_tag?: { attacker_login: string; tag_style: string; expires_at: string } | null;
+  active_drop?: { id: string; rarity: string; points: number; max_pulls: number; pull_count: number; expires_at: string } | null;
+  rabbit_completed?: boolean;
 }
 
 export interface TopRepo {
@@ -73,6 +85,7 @@ export interface CityBuilding {
   current_week_kudos_given: number;
   current_week_kudos_received: number;
   active_raid_tag?: { attacker_login: string; tag_style: string; expires_at: string } | null;
+  active_drop?: { id: string; rarity: string; points: number; max_pulls: number; pull_count: number; expires_at: string } | null;
   rabbit_completed: boolean;
   xp_total: number;
   xp_level: number;
@@ -526,6 +539,7 @@ export function generateCityLayout(devs: DeveloperRecord[]): {
         current_week_kudos_given: (dev as unknown as Record<string, unknown>).current_week_kudos_given as number ?? 0,
         current_week_kudos_received: (dev as unknown as Record<string, unknown>).current_week_kudos_received as number ?? 0,
         active_raid_tag: (dev as unknown as Record<string, unknown>).active_raid_tag as CityBuilding["active_raid_tag"] ?? null,
+        active_drop: null,
         rabbit_completed: (dev as unknown as Record<string, unknown>).rabbit_completed as boolean ?? false,
         xp_total: (dev as unknown as Record<string, unknown>).xp_total as number ?? 0,
         xp_level: (dev as unknown as Record<string, unknown>).xp_level as number ?? 1,
@@ -613,7 +627,8 @@ export function generateCityLayout(devs: DeveloperRecord[]): {
     if (addPlaza) {
       const key = `${ogx},${ogz}`;
       occupiedCells.add(key);
-      let [pcx, pcz] = gridToWorld(ogx, ogz);
+      const [pcx, initialPcz] = gridToWorld(ogx, ogz);
+      let pcz = initialPcz;
       if (pcz > RIVER_Z_THRESHOLD) pcz += RIVER_PUSH;
       plazas.push({
         position: [pcx, 0, pcz],
@@ -652,6 +667,12 @@ export function generateCityLayout(devs: DeveloperRecord[]): {
       globalBlockSeed++;
     }
   }
+
+  // ── Reserve grid cells for landmarks ──
+  // E.Arcade: grid(1, -1) → world [173, 0, -149]
+  occupiedCells.add("1,-1");
+  // Sponsored landmarks (dynamic)
+  for (const s of SPONSORS) occupiedCells.add(`${s.gridX},${s.gridZ}`);
 
   // ── A) Downtown: spiral at grid (0, 0) ──
   placeSpiralCluster(downtownDevs, 0, 0, true);

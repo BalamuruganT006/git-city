@@ -65,9 +65,8 @@ function SupportContent() {
           Keep the <span style={{ color: ACCENT }}>Signal</span> Alive
         </h1>
         <p className="mt-2 text-xs text-muted normal-case sm:text-sm">
-          Git City runs on servers, databases, and API calls. Every new building
-          that goes up, the cost goes up with it. Your support keeps this city
-          running.
+          50,000 buildings. 2 million views. Zero ads. Built by one dev, on nights and weekends.
+          Here&apos;s how you can help keep this city growing.
         </p>
 
         {/* Thank you banner */}
@@ -86,10 +85,66 @@ function SupportContent() {
         )}
 
         <div className="mt-8 flex flex-col gap-5">
+          {/* Claim */}
+          <div className="border-[3px] border-border bg-bg-raised p-5 sm:p-6">
+            <p className="text-sm text-cream">
+              <span style={{ color: ACCENT }}>01.</span> Claim your building
+            </p>
+            <p className="mt-2 text-xs text-muted normal-case">
+              Connect your GitHub account and your building appears in the city based on your real contributions.
+            </p>
+            <Link
+              href="/"
+              className="btn-press mt-4 inline-block border-2 px-5 py-2 text-xs transition-colors"
+              style={{ borderColor: ACCENT, color: ACCENT }}
+            >
+              Go to the city →
+            </Link>
+          </div>
+
+          {/* Discord */}
+          <div className="border-[3px] border-border bg-bg-raised p-5 sm:p-6">
+            <p className="text-sm text-cream">
+              <span style={{ color: ACCENT }}>02.</span> Join the Discord
+            </p>
+            <p className="mt-2 text-xs text-muted normal-case">
+              Talk to other devs, follow updates, and help shape what gets built next.
+            </p>
+            <a
+              href="https://discord.gg/2bTjFAkny7"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-press mt-4 inline-block border-2 border-border px-5 py-2 text-xs text-muted transition-colors hover:border-border-light hover:text-cream"
+            >
+              discord.gg/2bTjFAkny7
+            </a>
+          </div>
+
+          {/* GitHub Star */}
+          <div className="border-[3px] border-border bg-bg-raised p-5 sm:p-6">
+            <p className="text-sm text-cream">
+              <span style={{ color: ACCENT }}>03.</span> Star on GitHub
+            </p>
+            <p className="mt-2 text-xs text-muted normal-case">
+              A star helps more developers discover Git City. Takes one click.
+            </p>
+            <a
+              href="https://github.com/srizzon/git-city"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-press mt-4 inline-block border-2 border-border px-5 py-2 text-xs text-muted transition-colors hover:border-border-light hover:text-cream"
+            >
+              github.com/srizzon/git-city
+            </a>
+          </div>
+
+          {/* Financial support header */}
+          <p className="mt-2 text-xs text-dim uppercase tracking-widest">Financial support</p>
+
           {/* Stripe */}
           <div className="border-[3px] border-border bg-bg-raised p-5 sm:p-6">
             <p className="text-sm text-cream">
-              <span style={{ color: ACCENT }}>01.</span> One-time Support
+              <span style={{ color: ACCENT }}>04.</span> One-time Support
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {[5, 10, 25].map((amount) => (
@@ -97,7 +152,7 @@ function SupportContent() {
                   key={amount}
                   disabled={loadingAmount !== null}
                   onClick={() => handleStripeCheckout(amount)}
-                  className="btn-press border-[2px] border-border px-5 py-2 text-xs text-cream transition-colors hover:border-border-light disabled:cursor-wait disabled:opacity-50"
+                  className="btn-press border-2 border-border px-5 py-2 text-xs text-cream transition-colors hover:border-border-light disabled:cursor-wait disabled:opacity-50"
                 >
                   {loadingAmount === amount ? "..." : `$${amount}`}
                 </button>
@@ -115,12 +170,12 @@ function SupportContent() {
                       handleStripeCheckout(parseInt(customAmount, 10));
                     }
                   }}
-                  className="w-14 border-[2px] border-border bg-transparent px-2 py-2 text-xs text-cream outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                  className="w-14 border-2 border-border bg-transparent px-2 py-2 text-xs text-cream outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 />
                 <button
                   disabled={loadingAmount !== null || !customAmount || parseInt(customAmount, 10) < 1}
                   onClick={() => handleStripeCheckout(parseInt(customAmount, 10))}
-                  className="btn-press border-[2px] border-border px-3 py-2 text-[10px] text-cream transition-colors hover:border-border-light disabled:cursor-not-allowed disabled:opacity-30"
+                  className="btn-press border-2 border-border px-3 py-2 text-[10px] text-cream transition-colors hover:border-border-light disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {loadingAmount && loadingAmount !== 5 && loadingAmount !== 10 && loadingAmount !== 25 ? "..." : "GO"}
                 </button>
@@ -136,13 +191,13 @@ function SupportContent() {
           {/* GitHub Sponsors */}
           <div className="border-[3px] border-border bg-bg-raised p-5 sm:p-6">
             <p className="text-sm text-cream">
-              <span style={{ color: ACCENT }}>02.</span> GitHub Sponsors
+              <span style={{ color: ACCENT }}>05.</span> GitHub Sponsors
             </p>
             <a
               href="https://github.com/sponsors/srizzon"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-press mt-4 inline-block border-[2px] border-border px-5 py-2 text-xs text-muted transition-colors hover:border-border-light hover:text-cream"
+              className="btn-press mt-4 inline-block border-2 border-border px-5 py-2 text-xs text-muted transition-colors hover:border-border-light hover:text-cream"
             >
               github.com/sponsors/srizzon
             </a>
@@ -151,7 +206,7 @@ function SupportContent() {
           {/* Crypto (ETH) */}
           <div className="border-[3px] border-border bg-bg-raised p-5 sm:p-6">
             <p className="text-sm text-cream">
-              <span style={{ color: ACCENT }}>03.</span> Crypto (ETH)
+              <span style={{ color: ACCENT }}>06.</span> Crypto (ETH)
             </p>
             <div className="mt-4 flex items-center gap-3">
               <code className="break-all text-[9px] text-muted normal-case sm:text-xs">
@@ -159,7 +214,7 @@ function SupportContent() {
               </code>
               <button
                 onClick={copyEth}
-                className="btn-press shrink-0 border-[2px] border-border px-3 py-1.5 text-[10px] transition-colors hover:border-border-light"
+                className="btn-press shrink-0 border-2 border-border px-3 py-1.5 text-[10px] transition-colors hover:border-border-light"
                 style={{
                   color: copied ? "#0d0d0f" : ACCENT,
                   backgroundColor: copied ? ACCENT : "transparent",
@@ -173,14 +228,14 @@ function SupportContent() {
           {/* $GITC Community Token */}
           <div className="border-[3px] border-border bg-bg-raised p-5 sm:p-6">
             <p className="text-sm text-cream">
-              <span style={{ color: ACCENT }}>04.</span> $GITC Community Token
+              <span style={{ color: ACCENT }}>07.</span> $GITC Community Token
             </p>
             <p className="mt-2 text-xs text-muted normal-case">
               The community created a token to support the project.
             </p>
             <Link
               href="/token"
-              className="btn-press mt-4 inline-block border-[2px] border-border px-5 py-2 text-xs text-muted transition-colors hover:border-border-light hover:text-cream"
+              className="btn-press mt-4 inline-block border-2 border-border px-5 py-2 text-xs text-muted transition-colors hover:border-border-light hover:text-cream"
             >
               Learn more & disclaimer
             </Link>

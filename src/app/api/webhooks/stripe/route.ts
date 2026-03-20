@@ -39,7 +39,7 @@ export async function POST(request: Request) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
 
-        // --- Sky Ad purchase ---
+        // --- Sky Ad purchase (subscription or one-off) ---
         if (session.metadata?.type === "sky_ad") {
           const skyAdId = session.metadata.sky_ad_id;
           if (!skyAdId) {
@@ -77,9 +77,34 @@ export async function POST(request: Request) {
             break;
           }
 
-          const plan = SKY_AD_PLANS[planId];
+          // Get subscription details for period end
+          const subscriptionId =
+            typeof session.subscription === "string"
+              ? session.subscription
+              : session.subscription?.id;
+
           const now = new Date();
-          const endsAt = new Date(now.getTime() + plan.duration_days * 24 * 60 * 60 * 1000);
+          let endsAt: Date;
+
+          if (subscriptionId) {
+            // Subscription mode (3m, 6m, 12m)
+            const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+              expand: ["items.data"],
+            });
+            const firstItem = subscription.items?.data?.[0];
+            const periodEnd = firstItem?.current_period_end;
+            endsAt = periodEnd
+              ? new Date(periodEnd * 1000)
+              : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+          } else {
+            // One-off payment mode (7d, 14d, 1m): use period from metadata
+            const periodMeta = session.metadata?.period;
+            const PERIOD_DAYS: Record<string, number> = { "1w": 7, "7d": 7, "14d": 14, "1m": 30 };
+            const days = (periodMeta && PERIOD_DAYS[periodMeta]) || 30;
+            endsAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+          }
+
+          const purchaserEmail = session.customer_details?.email ?? null;
 
           await sb
             .from("sky_ads")
@@ -87,11 +112,34 @@ export async function POST(request: Request) {
               active: true,
               starts_at: now.toISOString(),
               ends_at: endsAt.toISOString(),
-              purchaser_email: session.customer_details?.email ?? null,
+              purchaser_email: purchaserEmail,
+              stripe_subscription_id: subscriptionId ?? null,
+              stripe_customer_id:
+                typeof session.customer === "string"
+                  ? session.customer
+                  : session.customer?.id ?? null,
             })
             .eq("id", ad.id);
 
+          // Link to advertiser account if exists
+          if (purchaserEmail) {
+            const { data: advertiser } = await sb
+              .from("advertiser_accounts")
+              .select("id")
+              .eq("email", purchaserEmail)
+              .maybeSingle();
+
+            if (advertiser) {
+              await sb
+                .from("sky_ads")
+                .update({ advertiser_id: advertiser.id })
+                .eq("id", ad.id)
+                .is("advertiser_id", null);
+            }
+          }
+
           // Auto-deactivate the "advertise" placeholder if same vehicle type
+          const plan = SKY_AD_PLANS[planId];
           if (plan.vehicle === "plane") {
             await sb
               .from("sky_ads")
@@ -126,12 +174,24 @@ export async function POST(request: Request) {
           .eq("provider", "stripe")
           .maybeSingle();
 
+        const taxId = session.customer_details?.tax_ids?.[0];
+        const billingAddress = session.customer_details?.address;
+        const fiscalData = {
+          buyer_name: session.customer_details?.name ?? null,
+          buyer_email: session.customer_details?.email ?? null,
+          buyer_tax_id: taxId?.value ?? null,
+          buyer_tax_id_type: taxId?.type ?? null,
+          buyer_country: billingAddress?.country ?? null,
+          buyer_address: billingAddress ?? null,
+        };
+
         if (pending) {
           await sb
             .from("purchases")
             .update({
               status: "completed",
               provider_tx_id: paymentIntentId ?? session.id,
+              ...fiscalData,
             })
             .eq("id", pending.id);
 
@@ -207,10 +267,74 @@ export async function POST(request: Request) {
               amount_cents: session.amount_total ?? 0,
               currency: session.currency ?? "usd",
               status: "completed",
+              ...fiscalData,
             });
             await autoEquipIfSolo(Number(developerId), itemId);
           }
         }
+        break;
+      }
+
+      // --- Subscription renewal: extend ad period ---
+      case "invoice.paid": {
+        const invoice = event.data.object as Stripe.Invoice;
+
+        // In Stripe SDK v20+, subscription lives inside invoice.parent.subscription_details
+        const subDetails = invoice.parent?.subscription_details;
+        const subscriptionId =
+          typeof subDetails?.subscription === "string"
+            ? subDetails.subscription
+            : subDetails?.subscription?.id;
+
+        if (!subscriptionId) break;
+
+        // Only handle sky ad subscriptions
+        const { data: ad } = await sb
+          .from("sky_ads")
+          .select("id, active")
+          .eq("stripe_subscription_id", subscriptionId)
+          .maybeSingle();
+
+        if (!ad) break;
+
+        // Get updated period end from subscription items
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+          expand: ["items.data"],
+        });
+        const firstItem = subscription.items?.data?.[0];
+        const periodEnd = firstItem?.current_period_end;
+        const endsAt = periodEnd
+          ? new Date(periodEnd * 1000)
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+        await sb
+          .from("sky_ads")
+          .update({
+            active: true,
+            ends_at: endsAt.toISOString(),
+          })
+          .eq("id", ad.id);
+
+        break;
+      }
+
+      // --- Subscription canceled: deactivate ad ---
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object as Stripe.Subscription;
+
+        const { data: ad } = await sb
+          .from("sky_ads")
+          .select("id")
+          .eq("stripe_subscription_id", subscription.id)
+          .maybeSingle();
+
+        if (ad) {
+          await sb
+            .from("sky_ads")
+            .update({ active: false })
+            .eq("id", ad.id);
+        }
+
         break;
       }
 
@@ -243,7 +367,6 @@ export async function POST(request: Request) {
             .eq("status", "completed");
 
           // Refund sky ads: find checkout session for this payment intent
-          const stripe = getStripe();
           const sessions = await stripe.checkout.sessions.list({
             payment_intent: paymentIntentId,
             limit: 1,

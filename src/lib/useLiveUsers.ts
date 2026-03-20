@@ -1,46 +1,46 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { createBrowserSupabase } from "@/lib/supabase";
-import type { RealtimeChannel } from "@supabase/supabase-js";
 
-type Status = "connecting" | "connected" | "error";
+const HEARTBEAT_INTERVAL = 30_000; // 30s
 
 export function useLiveUsers() {
   const [count, setCount] = useState(1);
-  const [status, setStatus] = useState<Status>("connecting");
-  const channelRef = useRef<RealtimeChannel | null>(null);
+  const sessionId = useRef("");
 
   useEffect(() => {
-    const supabase = createBrowserSupabase();
-    const presenceKey = crypto.randomUUID();
+    // Generate a stable session ID per tab
+    if (!sessionId.current) {
+      sessionId.current = crypto.randomUUID();
+    }
 
-    const channel = supabase.channel("city-presence", {
-      config: { presence: { key: presenceKey } },
-    });
+    let cancelled = false;
 
-    channelRef.current = channel;
-
-    channel
-      .on("presence", { event: "sync" }, () => {
-        const state = channel.presenceState();
-        const total = Object.keys(state).length;
-        setCount(Math.max(1, total));
-        setStatus("connected");
-      })
-      .subscribe(async (status: string) => {
-        if (status === "SUBSCRIBED") {
-          await channel.track({ online_at: new Date().toISOString() });
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          setStatus("error");
+    async function heartbeat() {
+      try {
+        const res = await fetch("/api/online", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: sessionId.current }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && typeof data.count === "number") {
+          setCount(Math.max(1, data.count));
         }
-      });
+      } catch {
+        // ignore
+      }
+    }
+
+    heartbeat();
+    const interval = setInterval(heartbeat, HEARTBEAT_INTERVAL);
 
     return () => {
-      channel.unsubscribe();
-      channelRef.current = null;
+      cancelled = true;
+      clearInterval(interval);
     };
   }, []);
 
-  return { count, status };
+  return { count, status: "connected" as const };
 }

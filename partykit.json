@@ -1,0 +1,5 @@
+{
+  "name": "git-city-arcade",
+  "main": "party/arcade.ts",
+  "compatibilityDate": "2025-06-01"
+}

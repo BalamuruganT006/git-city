@@ -8,6 +8,7 @@ interface LevelUpToastProps {
   onDone: () => void;
 }
 
+
 export default memo(function LevelUpToast({ level, onDone }: LevelUpToastProps) {
   const [visible, setVisible] = useState(true);
   const rank = rankFromLevel(level);
@@ -23,7 +24,7 @@ export default memo(function LevelUpToast({ level, onDone }: LevelUpToastProps) 
 
   return (
     <div
-      className="fixed left-1/2 top-20 z-[70] -translate-x-1/2 transition-all duration-500"
+      className="fixed left-1/2 top-20 z-70 -translate-x-1/2 transition-all duration-500"
       style={{ opacity: visible ? 1 : 0, transform: `translateX(-50%) translateY(${visible ? 0 : -20}px)` }}
     >
       <div

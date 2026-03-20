@@ -7,12 +7,14 @@ import { createServerSupabase } from "@/lib/supabase-server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getOwnedItems } from "@/lib/items";
 import { TIER_COLORS } from "@/lib/achievements";
-import { DISTRICT_NAMES, DISTRICT_COLORS } from "@/lib/github";
+import { inferDistrict } from "@/lib/github";
 import { ITEM_NAMES } from "@/lib/zones";
 import { rankFromLevel, tierFromLevel, levelProgress, xpForLevel } from "@/lib/xp";
 import ClaimButton from "@/components/ClaimButton";
+import DeleteAccountButton from "@/components/DeleteAccountButton";
 import ShareButtons from "@/components/ShareButtons";
 import CompareChallenge from "@/components/CompareChallenge";
+import ProfileDistrict from "@/components/ProfileDistrict";
 import ReferralCTA from "@/components/ReferralCTA";
 import ProfileTracker from "@/components/ProfileTracker";
 
@@ -168,7 +170,7 @@ export default async function DevPage({ params }: Props) {
                 alt={dev.github_login}
                 width={100}
                 height={100}
-                className="border-[3px] border-border flex-shrink-0"
+                className="border-[3px] border-border shrink-0"
                 style={{ imageRendering: "pixelated" }}
               />
             )}
@@ -181,26 +183,22 @@ export default async function DevPage({ params }: Props) {
 
               {/* Rank Badge */}
               {dev.rank && (
-                <div className="mt-3 inline-block border-[2px] px-3 py-1 text-sm" style={{ borderColor: accent, color: accent }}>
+                <div className="mt-3 inline-block border-2 px-3 py-1 text-sm" style={{ borderColor: accent, color: accent }}>
                   #{dev.rank} in the city
                 </div>
               )}
 
               {/* District badge */}
               {dev.district && (
-                <div className="mt-2 flex items-center gap-2">
-                  <span
-                    className="px-2 py-0.5 text-[10px] text-bg"
-                    style={{ backgroundColor: DISTRICT_COLORS[dev.district] ?? '#888' }}
-                  >
-                    {DISTRICT_NAMES[dev.district] ?? dev.district}
-                  </span>
-                  {dev.district_rank && (
-                    <span className="text-[10px] text-muted">
-                      {dev.district_rank === 1 ? 'Mayor' : `#${dev.district_rank}`} in {DISTRICT_NAMES[dev.district]}
-                    </span>
-                  )}
-                </div>
+                <ProfileDistrict
+                  district={dev.district}
+                  districtRank={dev.district_rank}
+                  inferredDistrict={inferDistrict(dev.primary_language)}
+                  isOwner={isOwner}
+                  districtChosen={dev.district_chosen ?? false}
+                  districtChangesCount={dev.district_changes_count ?? 0}
+                  districtChangedAt={dev.district_changed_at ?? null}
+                />
               )}
 
               {/* Claim */}
@@ -231,7 +229,7 @@ export default async function DevPage({ params }: Props) {
             <div className="mt-5 border-[3px] border-border bg-bg-raised p-4">
               <div className="flex items-center gap-3">
                 <span
-                  className="flex h-10 w-10 items-center justify-center border-[2px] text-lg font-bold"
+                  className="flex h-10 w-10 items-center justify-center border-2 text-lg font-bold"
                   style={{ borderColor: tier.color, color: tier.color }}
                 >
                   {xpLevel}
@@ -249,7 +247,7 @@ export default async function DevPage({ params }: Props) {
                     </span>
                   </div>
                   <div className="mt-1.5 flex items-center gap-2">
-                    <div className="h-[5px] flex-1 bg-border">
+                    <div className="h-1.25 flex-1 bg-border">
                       <div
                         className="h-full"
                         style={{
@@ -351,7 +349,7 @@ export default async function DevPage({ params }: Props) {
                   return (
                     <span
                       key={ach.achievement_id}
-                      className="border-[2px] px-3 py-1 text-[10px]"
+                      className="border-2 px-3 py-1 text-[10px]"
                       style={{ borderColor: color, color }}
                     >
                       {ach.name}
@@ -370,7 +368,7 @@ export default async function DevPage({ params }: Props) {
               {ownedItems.map((itemId) => (
                 <span
                   key={itemId}
-                  className="border-[2px] px-3 py-1 text-[10px]"
+                  className="border-2 px-3 py-1 text-[10px]"
                   style={{ borderColor: accent, color: accent }}
                 >
                   {ITEM_NAMES[itemId] ?? itemId}
@@ -399,7 +397,7 @@ export default async function DevPage({ params }: Props) {
                 <Link
                   key={rd.github_login}
                   href={`/dev/${rd.github_login}`}
-                  className="flex items-center gap-2 border-[2px] border-border px-3 py-1.5 text-[10px] text-muted transition-colors hover:border-border-light hover:text-cream"
+                  className="flex items-center gap-2 border-2 border-border px-3 py-1.5 text-[10px] text-muted transition-colors hover:border-border-light hover:text-cream"
                 >
                   {rd.avatar_url && (
                     <Image
@@ -430,8 +428,23 @@ export default async function DevPage({ params }: Props) {
           </a>
         </div>
 
+        {/* Danger Zone — owner only */}
+        {isOwner && (
+          <div className="mt-8 border-[3px] border-red-500/40 p-5">
+            <h2 className="text-xs text-red-400">Danger Zone</h2>
+            <div className="mt-3 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[10px] text-muted normal-case">
+                  Permanently delete your account, your building, and all associated data.
+                </p>
+              </div>
+              <DeleteAccountButton />
+            </div>
+          </div>
+        )}
+
         {/* Creator credit */}
-        <div className="mt-10 border-t border-border/50 pt-4 text-center">
+        <div className="mt-6 border-t border-border/50 pt-4 text-center">
           <p className="text-[9px] text-muted normal-case">
             built by{" "}
             <a

@@ -47,7 +47,10 @@ function WallpaperInner() {
       const snapshotUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/city-data/snapshot.json?v=${v}`;
       const snapshotRes = await fetch(snapshotUrl);
       if (snapshotRes.ok) {
-        const snapshot = await snapshotRes.json();
+        const buf = await snapshotRes.arrayBuffer();
+        const ds = new DecompressionStream("gzip");
+        const stream = new Blob([buf]).stream().pipeThrough(ds);
+        const snapshot = await new Response(stream).json();
         allDevs = snapshot.developers;
       }
     } catch { /* fall through to chunked */ }

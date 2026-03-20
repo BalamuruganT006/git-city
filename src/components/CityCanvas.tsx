@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef, useEffect, useState, useMemo } from "react";
+import { useRef, useEffect, useEffectEvent, useState, useMemo } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useGLTF, Stats, PerformanceMonitor } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
 import CityScene from "./CityScene";
 import type { FocusInfo } from "./CityScene";
+import type { LiveSession } from "@/lib/useCodingPresence";
 import type { CityBuilding, CityPlaza, CityDecoration, CityRiver, CityBridge } from "@/lib/github";
 import { seededRandom } from "@/lib/github";
 import SkyAds from "./SkyAds";
@@ -16,9 +17,14 @@ import RaidSequence3D, { VehicleMesh } from "./RaidSequence3D";
 import type { RaidPhase } from "@/lib/useRaidSequence";
 import type { RaidExecuteResponse } from "@/lib/raid";
 import FounderSpire from "./FounderSpire";
+import EArcadeLandmark from "./EArcadeLandmark";
+import { SPONSORS } from "@/lib/sponsors/registry";
+import SponsoredLandmark from "@/lib/sponsors/SponsoredLandmark";
 import WhiteRabbit from "./WhiteRabbit";
 import CelebrationEffect from "./CelebrationEffect";
+import ComparePath from "./ComparePath";
 import WallpaperParallax from "./WallpaperParallax";
+import ThemeSkyFX from "./ThemeSkyFX";
 
 // ─── Theme Definitions ───────────────────────────────────────
 
@@ -71,7 +77,7 @@ const THEMES: CityTheme[] = [
       [0, "#000206"], [0.15, "#020814"], [0.30, "#061428"], [0.45, "#0c2040"],
       [0.55, "#102850"], [0.65, "#0c2040"], [0.80, "#061020"], [1, "#020608"],
     ],
-    fogColor: "#0a1428", fogNear: 400, fogFar: 2500,
+    fogColor: "#0a1428", fogNear: 400, fogFar: 3500,
     ambientColor: "#4060b0", ambientIntensity: 0.55,
     sunColor: "#7090d0", sunIntensity: 0.75, sunPos: [300, 120, -200],
     fillColor: "#304080", fillIntensity: 0.3, fillPos: [-200, 60, 200],
@@ -93,7 +99,7 @@ const THEMES: CityTheme[] = [
       [0.46, "#a05068"], [0.52, "#d07060"], [0.57, "#e89060"], [0.62, "#f0b070"],
       [0.68, "#f0c888"], [0.75, "#c08060"], [0.85, "#603030"], [1, "#180c10"],
     ],
-    fogColor: "#80405a", fogNear: 400, fogFar: 2500,
+    fogColor: "#80405a", fogNear: 400, fogFar: 3500,
     ambientColor: "#e0a080", ambientIntensity: 0.7,
     sunColor: "#f0b070", sunIntensity: 1.0, sunPos: [400, 120, -300],
     fillColor: "#6050a0", fillIntensity: 0.35, fillPos: [-200, 80, 200],
@@ -115,7 +121,7 @@ const THEMES: CityTheme[] = [
       [0.52, "#500860"], [0.60, "#380648"], [0.75, "#180230"], [0.90, "#0c0118"],
       [1, "#06000c"],
     ],
-    fogColor: "#1a0830", fogNear: 400, fogFar: 2500,
+    fogColor: "#1a0830", fogNear: 400, fogFar: 3500,
     ambientColor: "#8040c0", ambientIntensity: 0.6,
     sunColor: "#c050e0", sunIntensity: 0.85, sunPos: [300, 100, -200],
     fillColor: "#00c0d0", fillIntensity: 0.4, fillPos: [-250, 60, 200],
@@ -137,7 +143,7 @@ const THEMES: CityTheme[] = [
       [0.52, "#004828"], [0.60, "#003820"], [0.75, "#002014"], [0.90, "#001008"],
       [1, "#000604"],
     ],
-    fogColor: "#0a2014", fogNear: 400, fogFar: 2500,
+    fogColor: "#0a2014", fogNear: 400, fogFar: 3500,
     ambientColor: "#40a060", ambientIntensity: 0.55,
     sunColor: "#70d090", sunIntensity: 0.75, sunPos: [300, 100, -250],
     fillColor: "#20a080", fillIntensity: 0.35, fillPos: [-200, 60, 200],
@@ -211,37 +217,39 @@ useGLTF.preload("/models/paper-plane.glb");
 
 const INTRO_DURATION = 14; // seconds
 
-// Founder building sits at roughly (146, h, -66) in the first block.
-// Camera target: founder building top.
-const FOUNDER_X = 146;
-const FOUNDER_Z = -66;
-const TARGET_X = FOUNDER_X;
-const TARGET_Z = FOUNDER_Z;
-const TARGET_Y = 450;
+// E.Arcade landmark sits at (173, 0, -149), height ~540.
+// Camera target: E.Arcade mid-height.
+const EARCADE_X = 173;
+const EARCADE_Z = -149;
+const TARGET_X = EARCADE_X;
+const TARGET_Z = EARCADE_Z;
+const TARGET_Y = 270;
 
-// Arc sweep: camera arcs ~180° around the city
-// Far left in fog -> descends through buildings -> rises to wide panorama centered on founder
+// Mirror of original arc but from -Z side (front of city).
+// X is negated so screen-left→right matches the original.
+// Starts far-left (X+), sweeps right (X-), ends at orbit.
+const EARCADE_TOP_Y = 540;
 const INTRO_WAYPOINTS: [number, number, number][] = [
-  [-1600, 800, 1800],   // WP0: Far, high, left - city hidden in fog
-  [-1000, 700, 1300],   // WP1: Descending, silhouette appears
-  [-600,  600, 900],    // WP2: Ad plane level, buildings becoming clear
-  [-200,  550, 650],    // WP3: Skirting the city edge
-  [200,   600, 600],    // WP4: Crossing over
-  [500,   700, 700],    // WP5: Rising, pulling back
-  [700,   800, 900],    // WP6: Dramatic pullback
-  [800,   850, 1000],   // WP7: Final orbit position (wide panorama)
+  [1600, 650, -1800],   // WP0: Far, screen-left - in fog
+  [1000, 640, -1300],   // WP1: Silhouette appears
+  [600, 630, -900],    // WP2: Buildings becoming clear
+  [200, 620, -700],    // WP3: Skirting the city edge
+  [-200, 620, -720],   // WP4: Crossing over (level)
+  [-500, 650, -780],   // WP5: Gently rising
+  [-700, 730, -900],   // WP6: Rising further
+  [-800, 850, -1000],   // WP7: Final orbit position (wide panorama)
 ];
 
-// Look targets smoothly converge toward the founder building top
+// Look targets: gradual convergence toward E.Arcade rooftop (no sudden jumps)
 const INTRO_LOOK_TARGETS: [number, number, number][] = [
-  [100,      300,      -200],      // WP0: Toward distant city, already high
-  [TARGET_X, 380,      TARGET_Z],  // WP1: Rising toward founder top
-  [TARGET_X, TARGET_Y, TARGET_Z],  // WP2: Locking on
-  [TARGET_X, TARGET_Y, TARGET_Z],  // WP3: Holding
-  [TARGET_X, TARGET_Y, TARGET_Z],  // WP4: Holding
-  [TARGET_X, TARGET_Y, TARGET_Z],  // WP5: Holding
-  [TARGET_X, TARGET_Y, TARGET_Z],  // WP6: Holding
-  [TARGET_X, TARGET_Y, TARGET_Z],  // WP7: Final look target
+  [50, 350, -50],           // WP0: Toward city center
+  [EARCADE_X * 0.4, 380, EARCADE_Z * 0.2], // WP1: Easing toward E.Arcade
+  [EARCADE_X * 0.6, 410, EARCADE_Z * 0.4], // WP2: Converging
+  [EARCADE_X * 0.8, 450, EARCADE_Z * 0.7], // WP3: Getting closer
+  [EARCADE_X, 500, EARCADE_Z],       // WP4: Almost there
+  [EARCADE_X, EARCADE_TOP_Y, EARCADE_Z],  // WP5: Locking on rooftop
+  [EARCADE_X, EARCADE_TOP_Y, EARCADE_Z],  // WP6: Holding
+  [EARCADE_X, 450, EARCADE_Z],       // WP7: Gently easing down to orbit height
 ];
 
 // Smootherstep (Perlin): zero velocity AND zero acceleration at both ends
@@ -362,7 +370,7 @@ function RabbitFlyover({
   );
 
   useEffect(() => {
-    camera.position.set(800, 700, 1000);
+    camera.position.set(-800, 700, -1000);
     camera.lookAt(0, 200, 0);
   }, [camera]);
 
@@ -395,11 +403,13 @@ function CameraFocus({
   focusedBuilding,
   focusedBuildingB,
   controlsRef,
+  focusPosition,
 }: {
   buildings: CityBuilding[];
   focusedBuilding: string | null;
   focusedBuildingB?: string | null;
   controlsRef: React.RefObject<any>;
+  focusPosition?: [number, number, number] | null;
 }) {
   const { camera } = useThree();
   const startPos = useRef(new THREE.Vector3());
@@ -414,13 +424,14 @@ function CameraFocus({
   buildingsRef.current = buildings;
 
   useEffect(() => {
-    if (!focusedBuilding) {
+    if (!focusedBuilding && !focusPosition) {
       // Re-enable auto-rotate when focus is cleared
       if (controlsRef.current) {
         controlsRef.current.autoRotate = true;
       }
       return;
     }
+    if (!focusedBuilding) return; // focusPosition is handled by its own useEffect
 
     const bA = buildingsRef.current.find(
       (b) => b.login.toLowerCase() === focusedBuilding.toLowerCase()
@@ -475,17 +486,22 @@ function CameraFocus({
       // and pull camera further back to show more of the building
       const isMobile = window.innerWidth < 640;
       const mobileOffset = isMobile ? 60 : 0;
-      const dist = isMobile ? 250 : 80;
-      const camHeight = isMobile ? 160 : 60;
+      const dist = isMobile ? 300 : 180;
+      const camHeight = isMobile ? 200 : 120;
+
+      // Camera goes to the outside of the building (away from center) so it looks
+      // at the front face without other buildings blocking the view
+      const bx = bA.position[0], bz = bA.position[2];
+      const bLen = Math.sqrt(bx * bx + bz * bz) || 1;
       endPos.current.set(
-        bA.position[0] + dist,
+        bx + (bx / bLen) * dist,
         bA.height + camHeight,
-        bA.position[2] + dist
+        bz + (bz / bLen) * dist
       );
       endLook.current.set(
-        bA.position[0],
+        bx,
         Math.max(0, bA.height + 15 - mobileOffset),
-        bA.position[2]
+        bz
       );
     }
 
@@ -495,8 +511,38 @@ function CameraFocus({
     if (controlsRef.current) {
       controlsRef.current.autoRotate = false;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedBuilding, focusedBuildingB, camera, controlsRef]);
+
+  // Focus on a fixed position (sponsored landmarks)
+  useEffect(() => {
+    if (!focusPosition || focusedBuilding) return;
+
+    startPos.current.copy(camera.position);
+    if (controlsRef.current) {
+      startLook.current.copy(controlsRef.current.target);
+    }
+
+    const [px, py, pz] = focusPosition;
+    const isMobile = window.innerWidth < 640;
+    const dist = isMobile ? 400 : 280;
+    const camH = isMobile ? 300 : 220;
+    const mobileOffset = isMobile ? 60 : 0;
+
+    // Position camera OUTSIDE the building looking INWARD (toward center)
+    // so the front face (with text) is visible
+    const len = Math.sqrt(px * px + pz * pz) || 1;
+    endPos.current.set(px + (px / len) * dist, py + camH, pz + (pz / len) * dist);
+    endLook.current.set(px, Math.max(0, py - mobileOffset), pz);
+
+    progress.current = 0;
+    active.current = true;
+
+    if (controlsRef.current) {
+      controlsRef.current.autoRotate = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPosition, camera, controlsRef]);
 
   useFrame((_, delta) => {
     if (!active.current || progress.current >= 1) return;
@@ -552,7 +598,7 @@ const _idealLook = new THREE.Vector3();
 const _blendedPos = new THREE.Vector3();
 const _yAxis = new THREE.Vector3(0, 1, 0);
 
-function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = false, startPaused = false, vehicleType = "airplane", posRef }: { onExit: () => void; onHud: (s: number, a: number, x: number, z: number, yaw: number) => void; onPause: (paused: boolean) => void; pauseSignal?: number; hasOverlay?: boolean; startPaused?: boolean; vehicleType?: string; posRef?: React.MutableRefObject<THREE.Vector3> }) {
+function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = false, startPaused = false, vehicleType = "airplane", posRef, cityRadius = 3500, isMobile = false, onJoystickState, boostActive = false, brakeActive = false }: { onExit: () => void; onHud: (s: number, a: number, x: number, z: number, yaw: number) => void; onPause: (paused: boolean) => void; pauseSignal?: number; hasOverlay?: boolean; startPaused?: boolean; vehicleType?: string; posRef?: React.MutableRefObject<THREE.Vector3>; cityRadius?: number; isMobile?: boolean; onJoystickState?: (state: { baseX: number; baseY: number; dx: number; dy: number } | null) => void; boostActive?: boolean; brakeActive?: boolean }) {
   const { camera } = useThree();
   const ref = useRef<THREE.Group>(null);
   const orbitRef = useRef<any>(null);
@@ -581,6 +627,13 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
   const transitionLookFrom = useRef(new THREE.Vector3());
   const transitionLookTo = useRef(new THREE.Vector3());
   const wasJustUnpaused = useRef(false);
+
+  // Contrail / speed trail
+  const TRAIL_POINTS = 48;
+  const trailPositions = useRef(new Float32Array(TRAIL_POINTS * 3));
+  const trailColors = useRef(new Float32Array(TRAIL_POINTS * 4));
+  const trailGeomRef = useRef<THREE.BufferGeometry>(null);
+  const trailInit = useRef(false);
 
   const hudTimer = useRef(0);
   const lastHudSpeed = useRef(-1);
@@ -615,7 +668,12 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
     if (startPaused) onPause(true);
   }, [camera]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Mouse tracking for flight steering
+  // Touch joystick refs
+  const joystickTouch = useRef<{ id: number; startX: number; startY: number } | null>(null);
+  const pendingTouch = useRef<{ dx: number; dy: number } | null>(null);
+  const JOYSTICK_MAX_RADIUS = 60;
+
+  // Mouse + touch tracking for flight steering
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!paused.current) {
@@ -628,13 +686,70 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
         flySpeed.current = Math.max(MIN_FLY_SPEED, Math.min(MAX_FLY_SPEED, flySpeed.current - e.deltaY * 0.05));
       }
     };
+
+    // Touch handlers for mobile joystick
+    const onTouchStart = (e: TouchEvent) => {
+      if (paused.current || joystickTouch.current) return;
+      const t = e.changedTouches[0];
+      joystickTouch.current = { id: t.identifier, startX: t.clientX, startY: t.clientY };
+      onJoystickState?.({ baseX: t.clientX, baseY: t.clientY, dx: 0, dy: 0 });
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!joystickTouch.current || paused.current) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const t = e.changedTouches[i];
+        if (t.identifier !== joystickTouch.current.id) continue;
+        const rawDx = t.clientX - joystickTouch.current.startX;
+        const rawDy = t.clientY - joystickTouch.current.startY;
+        // Follow behavior: recenter when finger exceeds radius
+        const dist = Math.sqrt(rawDx ** 2 + rawDy ** 2);
+        if (dist > JOYSTICK_MAX_RADIUS) {
+          const angle = Math.atan2(rawDy, rawDx);
+          joystickTouch.current.startX = t.clientX - Math.cos(angle) * JOYSTICK_MAX_RADIUS;
+          joystickTouch.current.startY = t.clientY - Math.sin(angle) * JOYSTICK_MAX_RADIUS;
+        }
+        const dx = t.clientX - joystickTouch.current.startX;
+        const dy = t.clientY - joystickTouch.current.startY;
+        pendingTouch.current = { dx, dy };
+        onJoystickState?.({ baseX: joystickTouch.current.startX, baseY: joystickTouch.current.startY, dx, dy });
+      }
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (joystickTouch.current?.id === e.changedTouches[i].identifier) {
+          joystickTouch.current = null;
+          pendingTouch.current = null;
+          mouse.current.x = 0;
+          mouse.current.y = 0;
+          onJoystickState?.(null);
+        }
+      }
+    };
+
     window.addEventListener("mousemove", onMove);
     window.addEventListener("wheel", onWheel, { passive: true });
+
+    // Touch: start on canvas element, move/end on window to catch finger leaving canvas
+    const canvas = document.querySelector("canvas");
+    if (isMobile && canvas) {
+      canvas.style.touchAction = "none";
+      canvas.addEventListener("touchstart", onTouchStart, { passive: true });
+      window.addEventListener("touchmove", onTouchMove, { passive: true });
+      window.addEventListener("touchend", onTouchEnd, { passive: true });
+      window.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    }
+
     return () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("wheel", onWheel);
+      if (canvas) {
+        canvas.removeEventListener("touchstart", onTouchStart);
+      }
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchEnd);
     };
-  }, []);
+  }, [isMobile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // External pause (triggered by parent, e.g. building click)
   const prevSignal = useRef(pauseSignal);
@@ -648,6 +763,30 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
       }
     }
   }, [pauseSignal, onPause]);
+
+  // Auto-pause when an overlay opens, auto-resume when it closes.
+  // useEffectEvent gives a stable identity that always reads the latest onPause
+  // without adding it to the effect's dependency array.
+  const notifyPause = useEffectEvent((p: boolean) => onPause(p));
+  useEffect(() => {
+    if (hasOverlay) {
+      if (!paused.current) {
+        paused.current = true;
+        setIsPaused(true);
+        notifyPause(true);
+      }
+    } else {
+      if (paused.current) {
+        paused.current = false;
+        setIsPaused(false);
+        wasJustUnpaused.current = true;
+        transitionProgress.current = 0;
+        transitionFrom.current.copy(camera.position);
+        transitionLookFrom.current.copy(camLook.current);
+        notifyPause(false);
+      }
+    }
+  }, [hasOverlay]);
 
   // Keyboard
   const hasOverlayRef = useRef(hasOverlay);
@@ -698,6 +837,11 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
         e.preventDefault();
         if (paused.current) doResume();
         else doPause();
+      } else if (e.code === "KeyR") {
+        if (!paused.current) {
+          // Return to City
+          yaw.current = Math.atan2(pos.current.x, pos.current.z);
+        }
       } else if (paused.current && FLIGHT_KEYS.has(e.code)) {
         // Any flight key while paused → resume flying
         doResume();
@@ -747,6 +891,14 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
     }
 
     // ── FLIGHT MODE ──
+    // Consume pending touch input (mobile joystick -> mouse)
+    if (pendingTouch.current) {
+      const { dx, dy } = pendingTouch.current;
+      mouse.current.x = Math.max(-1, Math.min(1, dx / JOYSTICK_MAX_RADIUS));
+      mouse.current.y = Math.max(-1, Math.min(1, -dy / JOYSTICK_MAX_RADIUS));
+      pendingTouch.current = null;
+    }
+
     const t = state.clock.elapsedTime;
     const mx = mouse.current.x;
     const my = mouse.current.y;
@@ -761,10 +913,10 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
     if (k["KeyW"] || k["ArrowUp"]) altInput = 1;
     if (k["KeyS"] || k["ArrowDown"]) altInput = -1;
 
-    // Shift = boost 2x, Alt = slow 0.3x
+    // Shift = boost 2x, Alt = slow 0.3x, mobile boost/brake props
     let speedMult = 1;
-    if (k["ShiftLeft"] || k["ShiftRight"]) speedMult = 2;
-    if (k["AltLeft"] || k["AltRight"]) speedMult = 0.3;
+    if (k["ShiftLeft"] || k["ShiftRight"] || boostActive) speedMult = 2;
+    if (k["AltLeft"] || k["AltRight"] || brakeActive) speedMult = 0.3;
 
     const actualSpeed = flySpeed.current * speedMult;
 
@@ -776,6 +928,28 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
 
     _fwd.set(-Math.sin(yaw.current), 0, -Math.cos(yaw.current));
     pos.current.addScaledVector(_fwd, actualSpeed * dt);
+
+    // Soft / Hard boundary for X/Z dynamically based on city size
+    const MAX_RADIUS = Math.max(3500, cityRadius * 1.3);
+    const SOFT_RADIUS = MAX_RADIUS * 0.85;
+    const distSq = pos.current.x * pos.current.x + pos.current.z * pos.current.z;
+    if (distSq > SOFT_RADIUS * SOFT_RADIUS) {
+      const dist = Math.sqrt(distSq);
+      if (dist > SOFT_RADIUS) {
+        const excess = dist - SOFT_RADIUS;
+        const pullFactor = Math.min(excess / (MAX_RADIUS - SOFT_RADIUS), 1.0);
+        const pullMag = actualSpeed * dt * pullFactor * 1.5;
+        pos.current.x -= (pos.current.x / dist) * pullMag;
+        pos.current.z -= (pos.current.z / dist) * pullMag;
+
+        const newDistSq = pos.current.x * pos.current.x + pos.current.z * pos.current.z;
+        if (newDistSq > MAX_RADIUS * MAX_RADIUS) {
+          const newDist = Math.sqrt(newDistSq);
+          pos.current.x = (pos.current.x / newDist) * MAX_RADIUS;
+          pos.current.z = (pos.current.z / newDist) * MAX_RADIUS;
+        }
+      }
+    }
 
     if (posRef) posRef.current.copy(pos.current);
 
@@ -814,6 +988,38 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
     }
     camera.lookAt(camLook.current);
 
+    // Update trail
+    if (!trailInit.current) {
+      for (let i = 0; i < TRAIL_POINTS; i++) {
+        trailPositions.current[i * 3] = pos.current.x;
+        trailPositions.current[i * 3 + 1] = pos.current.y;
+        trailPositions.current[i * 3 + 2] = pos.current.z;
+        trailColors.current[i * 4] = 1;
+        trailColors.current[i * 4 + 1] = 1;
+        trailColors.current[i * 4 + 2] = 1;
+        trailColors.current[i * 4 + 3] = 0;
+      }
+      trailInit.current = true;
+    } else {
+      trailPositions.current.copyWithin(3, 0, (TRAIL_POINTS - 1) * 3);
+      trailPositions.current[0] = pos.current.x - _fwd.x * 5; // trails slightly behind the nose
+      trailPositions.current[1] = pos.current.y;
+      trailPositions.current[2] = pos.current.z - _fwd.z * 5;
+    }
+
+    const speedRatio = actualSpeed / DEFAULT_FLY_SPEED;
+    for (let i = 0; i < TRAIL_POINTS; i++) {
+      const fade = 1 - (i / TRAIL_POINTS);
+      // Only show trail when boosting (speedRatio > 1) or fast
+      const intensity = Math.max(0, Math.min(1.0, (speedRatio - 0.7) * 1.5));
+      trailColors.current[i * 4 + 3] = fade * intensity * 0.5; // max 50% opacity
+    }
+
+    if (trailGeomRef.current) {
+      trailGeomRef.current.attributes.position.needsUpdate = true;
+      trailGeomRef.current.attributes.color.needsUpdate = true;
+    }
+
     hudTimer.current += dt;
     if (hudTimer.current > 0.25) {
       hudTimer.current = 0;
@@ -825,6 +1031,13 @@ function AirplaneFlight({ onExit, onHud, onPause, pauseSignal = 0, hasOverlay = 
 
   return (
     <>
+      <line>
+        <bufferGeometry ref={trailGeomRef}>
+          <bufferAttribute attach="attributes-position" args={[trailPositions.current, 3]} count={TRAIL_POINTS} />
+          <bufferAttribute attach="attributes-color" args={[trailColors.current, 4]} count={TRAIL_POINTS} />
+        </bufferGeometry>
+        <lineBasicMaterial transparent vertexColors depthWrite={false} blending={THREE.AdditiveBlending} linewidth={2} />
+      </line>
       <group ref={ref}>
         <group scale={[4, 4, 4]}>
           <VehicleMesh type={vehicleType} />
@@ -1079,7 +1292,7 @@ function SkyCollectibles({ playerPosRef, accentColor, onCollect, cityRadius }: {
 function CameraReset() {
   const { camera } = useThree();
   useEffect(() => {
-    camera.position.set(400, 450, 600);
+    camera.position.set(-400, 450, -600);
     camera.lookAt(0, 30, 0);
   }, [camera]);
   return null;
@@ -1790,19 +2003,19 @@ function Waterfront({ river, dockColor }: { river: CityRiver; dockColor: string 
 
 // ─── Orbit Scene (controls + focus) ──────────────────────────
 
-function OrbitScene({ buildings, focusedBuilding, focusedBuildingB }: { buildings: CityBuilding[]; focusedBuilding: string | null; focusedBuildingB?: string | null }) {
+function OrbitScene({ buildings, focusedBuilding, focusedBuildingB, focusPosition }: { buildings: CityBuilding[]; focusedBuilding: string | null; focusedBuildingB?: string | null; focusPosition?: [number, number, number] | null }) {
   const controlsRef = useRef<any>(null);
   const { camera } = useThree();
 
-  // Reset camera on mount — wide panorama centered on founder area
+  // Reset camera on mount — wide panorama from front, E.Arcade centered
   useEffect(() => {
-    camera.position.set(800, 700, 1000);
+    camera.position.set(-800, 700, -1000);
     camera.lookAt(TARGET_X, TARGET_Y, TARGET_Z);
   }, [camera]);
 
   return (
     <>
-      <CameraFocus buildings={buildings} focusedBuilding={focusedBuilding} focusedBuildingB={focusedBuildingB} controlsRef={controlsRef} />
+      <CameraFocus buildings={buildings} focusedBuilding={focusedBuilding} focusedBuildingB={focusedBuildingB} controlsRef={controlsRef} focusPosition={focusPosition} />
       <OrbitControls
         ref={controlsRef}
         enableDamping
@@ -1825,7 +2038,7 @@ function WallpaperOrbitScene({ speed }: { speed: number }) {
   const { camera } = useThree();
 
   useEffect(() => {
-    camera.position.set(800, 700, 1000);
+    camera.position.set(-800, 700, -1000);
     camera.lookAt(TARGET_X, TARGET_Y, TARGET_Z);
   }, [camera]);
 
@@ -1874,6 +2087,10 @@ interface Props {
   flyPauseSignal?: number;
   flyHasOverlay?: boolean;
   flyStartPaused?: boolean;
+  isMobile?: boolean;
+  onJoystickState?: (state: { baseX: number; baseY: number; dx: number; dy: number } | null) => void;
+  flyBoostActive?: boolean;
+  flyBrakeActive?: boolean;
   skyAds?: SkyAd[];
   onAdClick?: (ad: SkyAd) => void;
   onAdViewed?: (adId: string) => void;
@@ -1885,6 +2102,10 @@ interface Props {
   raidDefender?: CityBuilding | null;
   onRaidPhaseComplete?: (phase: RaidPhase) => void;
   onLandmarkClick?: () => void;
+  onEArcadeClick?: () => void;
+  onSponsorClick?: (slug: string) => void;
+  sponsorFocusPos?: [number, number, number] | null;
+  activeSponsorSlug?: string | null;
   rabbitSighting?: number | null;
   onRabbitCaught?: () => void;
   rabbitCinematic?: boolean;
@@ -1895,12 +2116,31 @@ interface Props {
   celebrationActive?: boolean;
   wallpaperMode?: boolean;
   wallpaperSpeed?: number;
+  liveByLogin?: Map<string, LiveSession>;
+  cityEnergy?: number;
+}
+
+// Dynamically adjust scene exposure based on city energy (devs coding)
+function CityExposure({ cityEnergy }: { cityEnergy: number }) {
+  const gl = useThree((s) => s.gl);
+  const targetRef = useRef(1.3);
+  targetRef.current = 0.4 + 0.9 * Math.min(1, cityEnergy); // 0.4 at sleep, 1.3 at full
+
+  useFrame(() => {
+    const current = gl.toneMappingExposure;
+    const target = targetRef.current;
+    if (Math.abs(current - target) > 0.001) {
+      gl.toneMappingExposure += (target - current) * 0.02;
+    }
+  });
+
+  return null;
 }
 
 // Plaza indices for rabbit sightings (progressively further from center)
 const RABBIT_PLAZA_INDICES = [1, 2, 4, 7, 10]; // plazas[1]=slot3, [2]=slot7, [4]=slot18, [7]=slot42, [10]=slot75
 
-export default function CityCanvas({ buildings, plazas, decorations, river, bridges, flyMode, flyVehicle, onExitFly, onCollect, themeIndex, onHud, onPause, focusedBuilding, focusedBuildingB, accentColor, onClearFocus, onBuildingClick, onFocusInfo, flyPauseSignal, flyHasOverlay, flyStartPaused, skyAds, onAdClick, onAdViewed, introMode, onIntroEnd, raidPhase, raidData, raidAttacker, raidDefender, onRaidPhaseComplete, onLandmarkClick, rabbitSighting, onRabbitCaught, rabbitCinematic, onRabbitCinematicEnd, rabbitCinematicTarget, ghostPreviewLogin, holdRise, celebrationActive, wallpaperMode, wallpaperSpeed }: Props) {
+export default function CityCanvas({ buildings, plazas, decorations, river, bridges, flyMode, flyVehicle, onExitFly, onCollect, themeIndex, onHud, onPause, focusedBuilding, focusedBuildingB, accentColor, onClearFocus, onBuildingClick, onFocusInfo, flyPauseSignal, flyHasOverlay, flyStartPaused, isMobile, onJoystickState, flyBoostActive, flyBrakeActive, skyAds, onAdClick, onAdViewed, introMode, onIntroEnd, raidPhase, raidData, raidAttacker, raidDefender, onRaidPhaseComplete, onLandmarkClick, onEArcadeClick, onSponsorClick, sponsorFocusPos, activeSponsorSlug, rabbitSighting, onRabbitCaught, rabbitCinematic, onRabbitCinematicEnd, rabbitCinematicTarget, ghostPreviewLogin, holdRise, celebrationActive, wallpaperMode, wallpaperSpeed, liveByLogin, cityEnergy }: Props) {
   const t = THEMES[themeIndex] ?? THEMES[0];
   const showPerf = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("perf");
   const [dpr, setDpr] = useState(1);
@@ -1918,12 +2158,13 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
 
   return (
     <Canvas
-      camera={{ position: [400, 450, 600], fov: 55, near: 0.5, far: 4000 }}
+      camera={{ position: [-400, 450, -600], fov: 55, near: 0.5, far: 4000 }}
       dpr={dpr}
       gl={{ antialias: false, powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.3 }}
       style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh" }}
     >
       {showPerf && <Stats />}
+      <CityExposure cityEnergy={cityEnergy ?? 1} />
       <PerformanceMonitor
         onIncline={() => { setDpr(1.25); setBloomEnabled(true); }}
         onDecline={() => { setDpr(0.75); setBloomEnabled(false); }}
@@ -1936,14 +2177,15 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
       <hemisphereLight args={[t.hemiSky, t.hemiGround, t.hemiIntensity * 3.5]} key={`hemi-${themeIndex}`} />
 
       <SkyDome key={`sky-${themeIndex}`} stops={t.sky} />
+      <ThemeSkyFX key={`sky-fx-${themeIndex}`} themeIndex={themeIndex as 0 | 1 | 2 | 3} theme={t} />
 
-      {introMode && <IntroFlyover onEnd={onIntroEnd ?? (() => {})} />}
+      {introMode && <IntroFlyover onEnd={onIntroEnd ?? (() => { })} />}
 
       {rabbitCinematic && rabbitCinematicTarget != null && (
         <RabbitFlyover
           targetPlazaIndex={RABBIT_PLAZA_INDICES[(rabbitCinematicTarget - 1)] ?? 1}
           plazas={plazas}
-          onEnd={onRabbitCinematicEnd ?? (() => {})}
+          onEnd={onRabbitCinematicEnd ?? (() => { })}
         />
       )}
 
@@ -1952,7 +2194,7 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
       ) : (
         <>
           {!introMode && !rabbitCinematic && !flyMode && (!raidPhase || raidPhase === "idle" || raidPhase === "preview") && (
-            <OrbitScene buildings={buildings} focusedBuilding={focusedBuilding ?? null} focusedBuildingB={focusedBuildingB} />
+            <OrbitScene buildings={buildings} focusedBuilding={focusedBuilding ?? null} focusedBuildingB={focusedBuildingB} focusPosition={sponsorFocusPos} />
           )}
 
           {raidPhase && raidPhase !== "idle" && raidPhase !== "preview" && (
@@ -1961,14 +2203,14 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
               attacker={raidAttacker ?? null}
               defender={raidDefender ?? null}
               raidData={raidData ?? null}
-              onPhaseComplete={onRaidPhaseComplete ?? (() => {})}
+              onPhaseComplete={onRaidPhaseComplete ?? (() => { })}
             />
           )}
 
           {!introMode && flyMode && (
             <>
-              <AirplaneFlight onExit={onExitFly} onHud={onHud ?? (() => {})} onPause={onPause ?? (() => {})} pauseSignal={flyPauseSignal} hasOverlay={flyHasOverlay} startPaused={flyStartPaused} vehicleType={flyVehicle} posRef={flyPosRef} />
-              <SkyCollectibles playerPosRef={flyPosRef} accentColor={accentColor ?? "#6090e0"} onCollect={onCollect ?? (() => {})} cityRadius={cityRadius} />
+              <AirplaneFlight onExit={onExitFly} onHud={onHud ?? (() => { })} onPause={onPause ?? (() => { })} pauseSignal={flyPauseSignal} hasOverlay={flyHasOverlay} startPaused={flyStartPaused} vehicleType={flyVehicle} posRef={flyPosRef} cityRadius={cityRadius} isMobile={isMobile} onJoystickState={onJoystickState} boostActive={flyBoostActive} brakeActive={flyBrakeActive} />
+              <SkyCollectibles playerPosRef={flyPosRef} accentColor={accentColor ?? "#6090e0"} onCollect={onCollect ?? (() => { })} cityRadius={cityRadius} />
             </>
           )}
         </>
@@ -1976,7 +2218,24 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
 
       <Ground key={`ground-${themeIndex}`} color={t.groundColor} grid1={t.grid1} grid2={t.grid2} />
 
-      <FounderSpire onClick={onLandmarkClick ?? (() => {})} />
+      <EArcadeLandmark
+        onClick={onEArcadeClick ?? (() => { })}
+        themeAccent={t.building.accent}
+        themeWindowLit={t.building.windowLit}
+        themeFace={t.building.face}
+      />
+      {SPONSORS.map((s) => (
+        <SponsoredLandmark
+          key={s.slug}
+          config={s}
+          onClick={() => onSponsorClick?.(s.slug)}
+          themeAccent={t.building.accent}
+          themeWindowLit={t.building.windowLit}
+          themeFace={t.building.face}
+          dimmed={!!activeSponsorSlug && activeSponsorSlug !== s.slug}
+        />
+      ))}
+      <FounderSpire onClick={onLandmarkClick ?? (() => { })} />
 
       {!wallpaperMode && celebrationActive && <CelebrationEffect cityRadius={cityRadius} />}
 
@@ -1989,7 +2248,7 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
           <WhiteRabbit
             position={pos}
             visible={true}
-            onCaught={onRabbitCaught ?? (() => {})}
+            onCaught={onRabbitCaught ?? (() => { })}
           />
         );
       })()}
@@ -2019,6 +2278,16 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
         flyMode={flyMode}
         ghostPreviewLogin={ghostPreviewLogin}
         holdRise={holdRise}
+        liveByLogin={liveByLogin}
+        cityEnergy={cityEnergy}
+        dimAll={!!sponsorFocusPos}
+      />
+
+      <ComparePath
+        buildings={buildings}
+        focusedBuilding={raidPhase && raidPhase !== "idle" && raidPhase !== "preview" && raidPhase !== "share" && raidPhase !== "done" ? (raidDefender?.login ?? focusedBuilding ?? null) : (focusedBuilding ?? null)}
+        focusedBuildingB={raidPhase && raidPhase !== "idle" && raidPhase !== "preview" && raidPhase !== "share" && raidPhase !== "done" ? (raidAttacker?.login ?? null) : (focusedBuildingB ?? null)}
+        accentColor={t.building.accent}
       />
 
       <InstancedDecorations items={decorations} roadMarkingColor={t.roadMarkingColor} sidewalkColor={t.sidewalkColor} />
@@ -2043,7 +2312,7 @@ export default function CityCanvas({ buildings, plazas, decorations, river, brid
             mipmapBlur
             luminanceThreshold={1}
             luminanceSmoothing={0.3}
-            intensity={1.2}
+            intensity={1.2 * Math.max(0.1, cityEnergy ?? 1)}
           />
         </EffectComposer>
       )}

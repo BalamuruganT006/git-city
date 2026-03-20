@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { gzipSync } from "zlib";
 import { getSupabaseAdmin } from "@/lib/supabase";
+
+export const maxDuration = 300;
 
 const STORAGE_BUCKET = "city-data";
 const STORAGE_PATH = "snapshot.json";
@@ -45,7 +48,7 @@ export async function GET(request: NextRequest) {
   await sb.storage.createBucket(STORAGE_BUCKET, { public: true }).catch(() => {});
 
   // Fetch everything in parallel
-  const [devs, purchases, giftPurchases, customizations, achievements, raidTags, statsResult] =
+  const [devs, purchases, giftPurchases, customizations, achievements, raidTags, activeDropsResult, statsResult] =
     await Promise.all([
       fetchAll<Record<string, any>>(
         sb,
@@ -83,6 +86,10 @@ export async function GET(request: NextRequest) {
         "building_id, attacker_login, tag_style, expires_at",
         (q) => q.eq("active", true),
       ),
+      sb
+        .from("building_drops")
+        .select("id, building_id, rarity, points, max_pulls, pull_count, expires_at")
+        .gt("expires_at", new Date().toISOString()),
       sb.from("city_stats").select("*").eq("id", 1).single(),
     ]);
 
@@ -136,6 +143,20 @@ export async function GET(request: NextRequest) {
     };
   }
 
+  // Build active drops as separate obfuscated array (keyed by dev rank)
+  const idToRank = new Map<number, number>();
+  for (const dev of devs) idToRank.set(dev.id, dev.rank);
+
+  const _d: { n: number; id: string; r: string; p: number; m: number; c: number; x: string }[] = [];
+  for (const row of activeDropsResult.data ?? []) {
+    if (row.pull_count < row.max_pulls) {
+      const rank = idToRank.get(row.building_id);
+      if (rank !== undefined) {
+        _d.push({ n: rank, id: row.id, r: row.rarity, p: row.points, m: row.max_pulls, c: row.pull_count, x: row.expires_at });
+      }
+    }
+  }
+
   // Merge
   const developers = devs.map((dev) => ({
     ...dev,
@@ -159,16 +180,21 @@ export async function GET(request: NextRequest) {
 
   const snapshot = JSON.stringify({
     developers,
+    _d,
     stats: statsResult.data ?? { total_developers: 0, total_contributions: 0 },
     generated_at: new Date().toISOString(),
   });
 
-  // Upload to Supabase Storage (upsert)
+  const compressed = gzipSync(Buffer.from(snapshot));
+
+  // Upload gzip bytes directly via Supabase SDK (avoids Content-Encoding issues).
+  // The frontend decompresses with DecompressionStream.
   const { error: uploadError } = await sb.storage
     .from(STORAGE_BUCKET)
-    .upload(STORAGE_PATH, snapshot, {
-      contentType: "application/json",
+    .upload(STORAGE_PATH, compressed, {
+      contentType: "application/gzip",
       upsert: true,
+      cacheControl: "no-cache",
     });
 
   if (uploadError) {
@@ -178,7 +204,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     developers: developers.length,
-    size_kb: Math.round(snapshot.length / 1024),
+    size_kb: Math.round(compressed.length / 1024),
+    uncompressed_kb: Math.round(snapshot.length / 1024),
     duration_ms: Date.now() - started,
   });
 }

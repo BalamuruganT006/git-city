@@ -37,6 +37,7 @@ export default function LofiRadio() {
   const [raidMode, setRaidMode] = useState(false);
   const [accent, setAccent] = useState(DEFAULT_ACCENT);
   const [shadow, setShadow] = useState(DEFAULT_SHADOW);
+  const [hidden, setHidden] = useState(false);
 
   const howlRef = useRef<Howl | null>(_howl);
   const fadingRef = useRef<Howl | null>(null);
@@ -80,6 +81,7 @@ export default function LofiRadio() {
       if (d.raidMode !== undefined) setRaidMode(d.raidMode as boolean);
       if (d.accent) setAccent(d.accent as string);
       if (d.shadow) setShadow(d.shadow as string);
+      if (d.hidden !== undefined) setHidden(d.hidden as boolean);
     };
 
     // Read stored state for late-mounting (e.g. portal)
@@ -94,6 +96,7 @@ export default function LofiRadio() {
       setRaidMode(false);
       setAccent(DEFAULT_ACCENT);
       setShadow(DEFAULT_SHADOW);
+      setHidden(false);
     };
   }, []);
 
@@ -228,12 +231,14 @@ export default function LofiRadio() {
 
   const currentTrack = TRACKS[trackIndex];
 
+  if (hidden) return null;
+
   return (
     <div className="relative">
       {/* Expanded panel — above button normally, to the right in fly mode */}
       {expanded && (
         <div
-          className={`absolute z-[25] border-[3px] border-border bg-bg-raised/95 backdrop-blur-sm ${
+          className={`absolute z-25 border-[3px] border-border bg-bg-raised/95 backdrop-blur-sm ${
             flyMode ? 'bottom-0 left-full ml-2' : 'bottom-full left-0 mb-2'
           }`}
           style={{ animation: "fade-in 0.15s ease-out", boxShadow: `3px 3px 0 0 ${shadow}`, width: 200 }}
@@ -257,7 +262,7 @@ export default function LofiRadio() {
         </button>
         <button
           onClick={togglePlay}
-          className="btn-press flex h-[32px] w-[32px] items-center justify-center border-[2px] border-border hover:border-cream/40"
+          className="btn-press flex h-8 w-8 items-center justify-center border-2 border-border hover:border-cream/40"
           style={{ color: playing ? accent : "var(--color-cream)" }}
           title={playing ? "Pause" : "Play"}
         >
@@ -306,7 +311,7 @@ export default function LofiRadio() {
         <span style={{ color: playing ? accent : "var(--color-muted)" }}>
           {playing ? "\u23F8" : "\u25B6"}
         </span>
-        <span className="text-cream max-w-[80px] truncate">
+        <span className="text-cream max-w-20 truncate">
           {playing ? currentTrack?.title : "Lo-fi"}
         </span>
         <span

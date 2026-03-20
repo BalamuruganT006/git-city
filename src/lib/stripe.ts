@@ -14,9 +14,7 @@ export function getStripe(): Stripe {
   if (!process.env.STRIPE_SECRET_KEY) {
     throw new Error("STRIPE_SECRET_KEY is not set");
   }
-  stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: "2026-01-28.clover",
-  });
+  stripeInstance = new Stripe(process.env.STRIPE_SECRET_KEY);
   return stripeInstance;
 }
 
@@ -49,6 +47,8 @@ export async function createCheckoutSession(
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     customer_email: customerEmail || undefined,
+    billing_address_collection: "required",
+    tax_id_collection: { enabled: true },
     line_items: [
       {
         price_data: {
